@@ -2,7 +2,7 @@
   "name": "annotation-demo",
   "version": "1.0.0",
   "private": true,
-  "description": "Offline visual annotation demo with attributed published figures",
+  "description": "Offline oral scan visual annotation workbench",
   "scripts": {
     "start": "node scripts/serve.mjs",
     "check": "node scripts/check.mjs"
