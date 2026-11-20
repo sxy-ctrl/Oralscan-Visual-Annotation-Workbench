@@ -1,0 +1,70 @@
+'use strict';
+const $=id=>document.getElementById(id), D=window.DATA, KEY='public-literature-workbench-v2';
+let state={schema:1,dataset:D.dataset_id,rule_hash:D.rule_hash,reviewer:'',current:0,version:'演示规则',records:{}},group='U',view=0,zoom=1;
+const names={U:'上颌',L:'下颌',B:'咬合',C:'接触'},regionNames={whole:'整体',left:'示意左侧',right:'示意右侧'},viewNames=['上颌视图','下颌视图','咬合视图','接触图','初始位叠加'];
+const special=['无法判断','示意参照缺失'];
+function el(tag,cls,text){let n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
+function toast(s){$('toast').textContent=s;$('toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').style.display='none',4500);}
+function target(){return D.targets[state.current];}
+function items(){return D.rules[state.version];}
+function key(t=target().id,v=state.version){return v+'|'+t;}
+function record(t=target().id){return state.records[key(t)]||{labels:{},tags:[],note:'',confirmed:false};}
+function mutable(){let k=key();return state.records[k]||(state.records[k]={labels:{},tags:[],note:'',confirmed:false});}
+function questions(){return items().flatMap(i=>i.regions.map(r=>({i,r,key:i.id+'_'+r})));}
+function complete(a){return questions().every(q=>a.labels[q.key]!==undefined);}
+function needsReview(a){return Object.values(a.labels).some(v=>special.includes(v));}
+function done(a){return a.confirmed&&complete(a)&&!needsReview(a);}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));$('save').textContent='已暂存 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});}catch(e){$('save').textContent='暂存失败，请导出 JSON';toast('浏览器暂存不可用，请立即导出 JSON 备份。');}}
+function edit(){let a=mutable();a.confirmed=false;a.updated_at=new Date().toISOString();persist();renderQueue();renderStats();renderGroups();renderFooter();}
+function renderQueue(){let box=$('queue');box.replaceChildren();let filter=$('filter').value,term=$('search').value.trim().toLowerCase();let completed=0;
+ D.targets.forEach((t,n)=>{let a=record(t.id),isDone=done(a),review=needsReview(a);if(isDone)completed++;if(!t.id.toLowerCase().includes(term))return;if(filter==='done'&&!isDone||filter==='pending'&&isDone||filter==='review'&&!review)return;
+ let b=el('button','case'+(n===state.current?' active':'')),left=el('span','',t.case_id);left.append(el('small','','测试集病例'));b.append(left,el('em','',isDone?'已完成':review?'待复核':Object.keys(a.labels).length?'草稿':'待标注'));b.onclick=()=>navigate(n);box.append(b);});$('total').textContent=completed+'/'+D.targets.length;
+ if(!box.children.length)box.append(el('p','unit','没有匹配的目标位'));
+}
+function renderGroups(){let box=$('groups');box.replaceChildren();for(let [g,n] of Object.entries(names).filter(([g])=>items().some(i=>i.id[0]===g))){let qs=questions().filter(q=>q.i.id[0]===g),a=record(),count=qs.filter(q=>a.labels[q.key]!==undefined).length;let b=el('button',group===g?'active':'',n+' '+count+'/'+qs.length);b.onclick=()=>{group=g;view={U:0,L:1,B:2,C:3}[g];zoom=1;renderGroups();renderQuestions();renderImage();};box.append(b);}}
+function renderQuestions(){let box=$('questions');box.replaceChildren();let a=record();for(let i of items().filter(i=>i.id[0]===group)){
+ let regions=i.regions.filter(r=>!$('missing').checked||a.labels[i.id+'_'+r]===undefined);if(!regions.length)continue;
+ let article=el('article','question');article.dataset.item=i.id;let h=el('h3');h.append(el('span','code',i.id),document.createTextNode(i.name));article.append(h,el('p','unit','评价单位：'+i.unit));if(i.note)article.append(el('div','rule-note',i.note));
+ for(let r of regions){let k=i.id+'_'+r,field=el('fieldset','region');field.append(el('legend','',regionNames[r]));
+  for(let c of [...i.categories,...special.map(name=>({name,score:null,description:'单独记录，待复核；演示状态不赋分。'}))]){
+   let label=el('label','choice'),input=el('input');input.type='radio';input.name=k;input.value=c.name;input.checked=a.labels[k]===c.name;input.onchange=()=>{mutable().labels[k]=c.name;edit();renderQuestions();};
+   let text=el('span','',c.name);if(c.interval)text.append(el('small','',c.interval));label.append(input,text,el('b','',c.score===null?'不计分':c.score+' 分'));label.title=c.description;field.append(label);
+  }
+  let clear=el('button','secondary','清除此区域选择');clear.onclick=()=>{delete mutable().labels[k];edit();renderQuestions();};field.append(clear);article.append(field);
+ }
+ let details=el('details'),summary=el('summary','','演示类别说明');details.append(summary);for(let c of i.categories){let p=el('p');p.append(el('b','',c.name+'：'),document.createTextNode(c.description),el('small','unit',' 来源：公开版通用演示规则；非临床标准'));details.append(p);}article.append(details);box.append(article);
+ }if(!box.children.length)box.append(el('p','unit','本分组已全部标注。'));$('progress').textContent=Object.keys(a.labels).length+' / '+questions().length+' 个区域已记录';}
+function renderImage(){let t=target(),im=t.images[0];$('views').replaceChildren();viewNames.forEach((n,j)=>{let b=el('button',view===j?'active':'',n);b.onclick=()=>{view=j;zoom=1;renderImage();};$('views').append(b);});$('image').src=im.src;renderContactSheet(t,im);$('image').alt=t.id+' '+viewNames[view];$('scale').textContent='100%';$('caption').textContent=view<3?viewNames[view]+' · '+im.label:viewNames[view]+'：测试集暂未提供对应影像，保留视图入口。';for(let id of ['minus','plus','fit','large'])$(id).disabled=view>=3;renderAttribution(t);$('viewport').scrollTo(0,0);}
+
+function renderStats(){let a=record(),qs=questions(),values=qs.map(q=>q.i.categories.find(c=>c.name===a.labels[q.key])?.score).filter(v=>v!==null&&v!==undefined);$('stats').replaceChildren();[['已记录',Object.keys(a.labels).length+'/'+qs.length],['有分数区域',values.length],['待复核区域',Object.values(a.labels).filter(v=>special.includes(v)).length]].forEach(([n,v])=>{let b=el('div','',n);b.append(el('strong','',v));$('stats').append(b);});$('progress').textContent=Object.keys(a.labels).length+' / '+qs.length+' 个区域已记录';}
+function renderFooter(){let a=record();$('status').textContent=done(a)?'当前目标已确认完成':needsReview(a)?'含待复核项 · 已保留草稿':'当前为草稿';$('prev').disabled=state.current===0;$('next').disabled=state.current===D.targets.length-1;$('confirm').textContent=done(a)?'已确认完成':'确认完成';}
+function renderTags(){let a=record();$('tags').replaceChildren();for(let t of D.tags){let label=el('label'),input=el('input');input.type='checkbox';input.checked=a.tags.includes(t.A);input.onchange=()=>{let r=mutable();r.tags=input.checked?[...r.tags,t.A]:r.tags.filter(v=>v!==t.A);edit();};label.append(input,document.createTextNode(' '+t.A+' '+t.B),el('small','',t.D));$('tags').append(label);}}
+function navigate(n){state.current=Math.max(0,Math.min(D.targets.length-1,n));zoom=1;view=0;$('title').textContent=target().case_id+' / '+('测试集目标位');$('identity').textContent=target().id+' · 规则：'+state.version+' · '+items().length+' 项示意标注';$('note').value=record().note;renderQueue();renderGroups();renderQuestions();renderImage();renderStats();renderTags();renderFooter();persist();}
+function documentData(){let scores={};for(let [k,a] of Object.entries(state.records)){let version=k.split('|')[0];scores[k]={};for(let i of D.rules[version])for(let r of i.regions){let q=i.id+'_'+r;scores[k][q]=i.categories.find(c=>c.name===a.labels[q])?.score??null;}}return {...state,demo_only:true,data_kind:'published-clinical-figures',usage:'interaction-demo-only',exported_at:new Date().toISOString(),scores};}
+function validate(s){if(!s||s.demo_only!==true||s.schema!==1||s.dataset!==D.dataset_id||s.rule_hash!==D.rule_hash||!D.rules[s.version]||typeof s.reviewer!=='string'||!Number.isInteger(s.current)||s.current<0||s.current>=D.targets.length||!s.records||Array.isArray(s.records))throw Error('数据集、规则版本或备份格式不匹配');let clean={schema:1,dataset:D.dataset_id,rule_hash:D.rule_hash,reviewer:s.reviewer,current:s.current,version:s.version,records:{}};
+ for(let [k,a] of Object.entries(s.records)){let [v,id]=k.split('|');if(!D.rules[v]||!D.targets.some(t=>t.id===id)||!a||typeof a.labels!=='object'||!a.labels||Array.isArray(a.labels)||!Array.isArray(a.tags)||a.tags.some(x=>!D.tags.some(t=>t.A===x))||typeof a.note!=='string'||typeof a.confirmed!=='boolean')throw Error('目标位或标注结构无效');let allowed=new Map(D.rules[v].flatMap(i=>i.regions.map(r=>[i.id+'_'+r,[...i.categories.map(c=>c.name),...special]])));let labels={};for(let [q,n] of Object.entries(a.labels)){if(!allowed.get(q)?.includes(n))throw Error('未知类别：'+q);labels[q]=n;}if(a.confirmed&&(Object.keys(labels).length!==allowed.size||Object.values(labels).some(n=>special.includes(n))))throw Error('未完整标注的目标不能确认完成');clean.records[k]={labels,tags:[...new Set(a.tags)],note:a.note,confirmed:a.confirmed,updated_at:a.updated_at||null};}return clean;}
+function download(content,type,ext){let url=URL.createObjectURL(new Blob(['\ufeff',content],{type})),a=el('a');a.href=url;a.download='SyntheticDemo_'+new Date().toISOString().replace(/[:.]/g,'-')+'.'+ext;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+$('export').onclick=()=>download(JSON.stringify(documentData(),null,2),'application/json','json');
+$('csv').onclick=()=>{let rows=[['规则版本','测试集病例','标注人','条目','区域','类别','分数','异常Tag','备注','已完成']];for(let [k,a] of Object.entries(state.records)){let [v,id]=k.split('|');for(let i of D.rules[v])for(let r of i.regions){let n=a.labels[i.id+'_'+r];if(n!==undefined)rows.push([v,id,state.reviewer,i.id,regionNames[r],n,i.categories.find(c=>c.name===n)?.score??'',a.tags.join(';'),a.note,a.confirmed?'是（测试集演示）':'否（测试集演示）']);}}let csv=rows.map(row=>row.map(x=>'"'+String(x).replace(/"/g,'""').replace(/^[=+@\-\t\r]/,"'$&")+'"').join(',')).join('\r\n');download(csv,'text/csv;charset=utf-8','csv');};
+$('import').onclick=()=>$('file').click();$('file').onchange=async e=>{try{let f=e.target.files[0];if(!f)return;if(f.size>15*1024*1024)throw Error('备份文件过大');let s=validate(JSON.parse((await f.text()).replace(/^\ufeff/,'')));if(Object.keys(state.records).length&&!confirm('导入将替换当前进度。建议先导出 JSON 备份。继续导入？'))return;state=s;$('reviewer').value=state.reviewer;$('version').value=state.version;navigate(state.current);toast('备份已恢复');}catch(e){toast('导入失败：'+e.message);}finally{$('file').value='';}};
+$('version').onchange=()=>{state.version=$('version').value;navigate(state.current);toast('已切换规则版本；演示规则仅用于交互展示。');};$('search').oninput=renderQueue;$('filter').onchange=renderQueue;$('missing').onchange=renderQuestions;
+$('reviewer').oninput=()=>{state.reviewer=$('reviewer').value;persist();};$('note').oninput=()=>{mutable().note=$('note').value;edit();};$('prev').onclick=()=>navigate(state.current-1);$('next').onclick=()=>navigate(state.current+1);
+$('confirm').onclick=()=>{let a=record(),missing=questions().filter(q=>a.labels[q.key]===undefined),review=questions().filter(q=>special.includes(a.labels[q.key]));if(!state.reviewer.trim()){toast('请先填写标注人');$('reviewer').focus();return;}if(missing.length||review.length){let first=(missing[0]||review[0]);group=first.i.id[0];$('missing').checked=false;renderGroups();renderQuestions();document.querySelector('[data-item="'+first.i.id+'"]').scrollIntoView({block:'nearest'});toast('还有 '+missing.length+' 个未标区域、'+review.length+' 个待复核区域；草稿已保留。');return;}mutable().confirmed=true;mutable().updated_at=new Date().toISOString();persist();renderQueue();renderFooter();toast('当前目标位已确认完成');};
+function scale(v){zoom=v;$('image').style.width=100*zoom+'%';let sheet=$('contactSheet');if(sheet)sheet.style.width=100*zoom+'%';$('scale').textContent=Math.round(100*zoom)+'%';}$('plus').onclick=()=>scale(Math.min(5,zoom*1.3));$('minus').onclick=()=>scale(Math.max(.5,zoom/1.3));$('fit').onclick=()=>scale(1);$('large').onclick=()=>{$('full').src=target().images[0].src;$('dialog').showModal();};$('close').onclick=()=>$('dialog').close();
+for(let r of D.auto){if(r.A?.startsWith('M')||r.A?.startsWith('G')){let b=el('div');b.append(el('b','',r.A),el('p','unit',r.B));$('auto').append(b);}if(r.C&&r.D&&$('auto').lastChild)$('auto').lastChild.append(el('div','',r.C+'：'+r.D));}
+window.addEventListener('storage',e=>{if(e.key===KEY)toast('另一窗口更新了进度，请先导出本窗口备份，避免覆盖。');});
+try{let saved=localStorage.getItem(KEY);if(saved)state=validate({...JSON.parse(saved),demo_only:true});}catch(e){toast('未能恢复暂存：'+e.message+'。请导入 JSON 备份。');}
+$('reviewer').value=state.reviewer;$('version').value=state.version;navigate(state.current);
+function renderContactSheet(t,im){
+ let old=$('contactSheet');if(old)old.remove();
+ $('image').style.display='none';
+ let sheet=el('div','contact-sheet');sheet.id='contactSheet';
+ const first=t.id==='PUB-01',w=first?794:727,h=first?834:782;
+ const rects=first?[[17,593,363,230],[210,15,378,250],[420,593,365,230],[10,303,378,260],[420,303,365,260]]:[[16,600,332,174],[187,10,354,266],[374,600,338,174],[10,303,338,261],[374,303,337,261]];
+ if(view>=3){sheet.style.display='block';sheet.append(el('p','view-placeholder',viewNames[view]+'：暂未提供对应影像'));$('viewport').append(sheet);return;}
+ const labels=['右侧视图','正面视图','左侧视图','上颌咬合面','下颌咬合面'];
+ rects.forEach(([x,y,cw,ch],i)=>{if(view===0&&i!==3||view===1&&i!==4||view===2&&i>2)return;let cell=el('div','sheet-cell'),crop=el('div','sheet-crop'),img=el('img');crop.style.aspectRatio=cw+'/'+ch;img.src=im.src;img.alt=labels[i];img.style.width=(w/cw*100)+'%';img.style.left=(-x/cw*100)+'%';img.style.top=(-y/ch*100)+'%';crop.append(img);if(view<2){cell.style.gridColumn='1 / -1';cell.style.maxWidth='620px';cell.style.width='100%';cell.style.margin='auto';}cell.append(crop,el('span','',labels[i]));sheet.append(cell);});
+ $('viewport').append(sheet);
+}
+function renderAttribution(t){let b=$('source');b.replaceChildren();let info=el('p','',t.source.authors+' · Figure '+t.source.figure+' · '+t.source.modifications);let a=el('a','','查看原始论文');a.href=t.source.url;a.target='_blank';a.rel='noopener noreferrer';let license=el('a','',t.source.license);license.href=t.source.license_url;license.target='_blank';license.rel='noopener noreferrer';b.append(info,a,document.createTextNode(' · '),license);}
+window.orthoApp={getState:()=>JSON.parse(JSON.stringify(state)),validate,documentData,navigate};

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "demo_only": true,
+  "dataset": "public-literature-demo-v2",
+  "rule_hash": "6f3ac5ca86e0e6341103c69fba2c82393cc6bcf9262821004640212b36e0540a",
+  "reviewer": "演示者",
+  "current": 0,
+  "version": "演示规则",
+  "records": {
+    "演示规则|PUB-01": {
+      "labels": {
+        "U01_whole": "基本一致"
+      },
+      "tags": [],
+      "note": "仅演示备份恢复；本条标签不是论文结论。",
+      "confirmed": false,
+      "updated_at": null
+    }
+  }
+}

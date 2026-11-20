@@ -1,0 +1,20 @@
+[
+  {
+    "file": "assets/images/published-case-01.jpg",
+    "figure": 6,
+    "license": "CC BY 4.0",
+    "source": "https://www.mdpi.com/1424-8220/21/5/1856",
+    "downloaded_on": "2026-11-20",
+    "sha256": "aad06d7fe2168efdea27ed185fcdc4ea81740e356a4ddf88dd4037ae2432cad9",
+    "modified": false
+  },
+  {
+    "file": "assets/images/published-case-02.jpg",
+    "figure": 10,
+    "license": "CC BY 4.0",
+    "source": "https://www.mdpi.com/1424-8220/21/5/1856",
+    "downloaded_on": "2026-11-20",
+    "sha256": "ef79de30f2a9c0f4a07b53f4c91cfcd6470eeceb2d42ef357c1c65328c2860d3",
+    "modified": false
+  }
+]
